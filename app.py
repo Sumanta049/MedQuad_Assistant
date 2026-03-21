@@ -12,6 +12,7 @@ from peft import PeftModel
 # Configuration
 MODEL_ID = "Lucifer049/med_chatbot_finetuned"  # Your HuggingFace model
 BASE_MODEL_ID = os.getenv("BASE_MODEL_ID", "meta-llama/Llama-3.2-3B-Instruct")
+HF_TOKEN = os.getenv("HF_TOKEN")
 MAX_NEW_TOKENS = 512
 TEMPERATURE = 0.7
 TOP_P = 0.9
@@ -40,36 +41,48 @@ def load_model():
         bnb_4bit_use_double_quant=False,
     )
     
-    # Try loading as a full/merged model first.
+    model_kwargs = {
+        "quantization_config": bnb_config,
+        "device_map": "auto",
+        "torch_dtype": torch.float16,
+        "trust_remote_code": True,
+        "token": HF_TOKEN,
+    }
+
+    tokenizer_kwargs = {
+        "trust_remote_code": True,
+        "token": HF_TOKEN,
+    }
+
     try:
-        model = AutoModelForCausalLM.from_pretrained(
-            MODEL_ID,
-            quantization_config=bnb_config,
-            device_map="auto",
-            torch_dtype=torch.float16,
-            trust_remote_code=True,
-        )
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
-    except ValueError as err:
-        # Adapter-only repos usually fail here with missing `model_type` in config.json.
-        if "model_type" not in str(err):
-            raise
-
-        print("Detected adapter-only repo. Loading base model + LoRA adapter...")
-        base_model = AutoModelForCausalLM.from_pretrained(
-            BASE_MODEL_ID,
-            quantization_config=bnb_config,
-            device_map="auto",
-            torch_dtype=torch.float16,
-            trust_remote_code=True,
-        )
-        model = PeftModel.from_pretrained(base_model, MODEL_ID)
-
-        # Prefer adapter tokenizer if present, otherwise use base tokenizer.
+        # Try loading as a full/merged model first.
         try:
-            tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
-        except Exception:
-            tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID, trust_remote_code=True)
+            model = AutoModelForCausalLM.from_pretrained(MODEL_ID, **model_kwargs)
+            tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, **tokenizer_kwargs)
+        except ValueError as err:
+            # Adapter-only repos usually fail here with missing `model_type` in config.json.
+            if "model_type" not in str(err):
+                raise
+
+            print("Detected adapter-only repo. Loading base model + LoRA adapter...")
+            base_model = AutoModelForCausalLM.from_pretrained(BASE_MODEL_ID, **model_kwargs)
+            model = PeftModel.from_pretrained(base_model, MODEL_ID, token=HF_TOKEN)
+
+            # Prefer adapter tokenizer if present, otherwise use base tokenizer.
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, **tokenizer_kwargs)
+            except Exception:
+                tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID, **tokenizer_kwargs)
+    except OSError as err:
+        error_text = str(err)
+        if "gated repo" in error_text.lower() or "401" in error_text:
+            raise RuntimeError(
+                "Cannot access gated base model. In your Hugging Face Space, "
+                "set a secret named HF_TOKEN (with read access), ensure that token owner "
+                "has accepted the Llama model license, and keep BASE_MODEL_ID set to "
+                "meta-llama/Llama-3.2-3B-Instruct."
+            ) from err
+        raise
 
     tokenizer.pad_token = tokenizer.eos_token
     

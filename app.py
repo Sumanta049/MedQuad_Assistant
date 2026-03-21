@@ -4,12 +4,14 @@ Fine-tuned Llama 3.2 model for medical question answering
 """
 
 import gradio as gr
+import os
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
 
 # Configuration
 MODEL_ID = "Lucifer049/med_chatbot_finetuned"  # Your HuggingFace model
+BASE_MODEL_ID = os.getenv("BASE_MODEL_ID", "meta-llama/Llama-3.2-3B-Instruct")
 MAX_NEW_TOKENS = 512
 TEMPERATURE = 0.7
 TOP_P = 0.9
@@ -22,7 +24,12 @@ Always consult a qualified healthcare provider for medical concerns.
 """
 
 def load_model():
-    """Load the fine-tuned model with 4-bit quantization."""
+    """Load model for inference.
+
+    Supports either:
+    1) Full merged checkpoints (MODEL_ID is directly loadable), or
+    2) Adapter-only repos (falls back to BASE_MODEL_ID + PEFT adapter).
+    """
     print("Loading model...")
     
     # Quantization config for efficient inference
@@ -33,17 +40,37 @@ def load_model():
         bnb_4bit_use_double_quant=False,
     )
     
-    # Load model
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_ID,
-        quantization_config=bnb_config,
-        device_map="auto",
-        torch_dtype=torch.float16,
-        trust_remote_code=True,
-    )
-    
-    # Load tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
+    # Try loading as a full/merged model first.
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_ID,
+            quantization_config=bnb_config,
+            device_map="auto",
+            torch_dtype=torch.float16,
+            trust_remote_code=True,
+        )
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
+    except ValueError as err:
+        # Adapter-only repos usually fail here with missing `model_type` in config.json.
+        if "model_type" not in str(err):
+            raise
+
+        print("Detected adapter-only repo. Loading base model + LoRA adapter...")
+        base_model = AutoModelForCausalLM.from_pretrained(
+            BASE_MODEL_ID,
+            quantization_config=bnb_config,
+            device_map="auto",
+            torch_dtype=torch.float16,
+            trust_remote_code=True,
+        )
+        model = PeftModel.from_pretrained(base_model, MODEL_ID)
+
+        # Prefer adapter tokenizer if present, otherwise use base tokenizer.
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
+        except Exception:
+            tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID, trust_remote_code=True)
+
     tokenizer.pad_token = tokenizer.eos_token
     
     print("Model loaded successfully!")
@@ -161,4 +188,4 @@ with gr.Blocks(
     )
 
 if __name__ == "__main__":
-    demo.launch(share=False)
+    demo.queue().launch()

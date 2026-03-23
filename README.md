@@ -3,7 +3,6 @@
 A conversational AI assistant for medical questions, powered by a fine-tuned **Llama 3.2-3B** model.
 
 [![Hugging Face Adapter](https://img.shields.io/badge/🤗%20Adapter-Hugging%20Face-yellow)](https://huggingface.co/Lucifer049/medquad_assistant_v1)
-[![Gradio](https://img.shields.io/badge/Demo-Gradio-orange)](https://huggingface.co/spaces/Lucifer049/med-chatbot)
 
 > ⚠️ **Disclaimer**: This chatbot is for educational purposes only. It is NOT a substitute for professional medical advice.
 

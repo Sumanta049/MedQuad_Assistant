@@ -87,32 +87,14 @@ response = pipe(messages, max_new_tokens=256)
 print(response[0]["generated_text"][-1]["content"])
 ```
 
-## 📊 Sample Outputs
+
 
 ## 🔗 Model Links
 
 - Base model: [`meta-llama/Llama-3.2-3B-Instruct`](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct)
 - Fine-tuned adapter used in `app.py`: [`Lucifer049/medquad_assistant_v1`](https://huggingface.co/Lucifer049/medquad_assistant_v1)
 
-### Question: "What are the common symptoms of back pain?"
 
-> Back pain symptoms can vary depending on the underlying cause. Common symptoms include:
-> - Muscle ache or stiffness in the lower back
-> - Pain that radiates down the leg (sciatica)
-> - Limited flexibility or range of motion
-> - Difficulty standing straight
-> 
-> The pain may be constant or may occur only during certain movements...
-
-### Question: "How can I manage high blood pressure naturally?"
-
-> There are several lifestyle modifications that can help manage blood pressure:
-> - Reduce sodium intake (less than 2,300mg per day)
-> - Maintain a healthy weight
-> - Exercise regularly (at least 30 minutes most days)
-> - Limit alcohol consumption
-> - Manage stress through relaxation techniques
-> - Follow the DASH diet (rich in fruits, vegetables, whole grains)...
 
 ## 📁 Project Structure
 

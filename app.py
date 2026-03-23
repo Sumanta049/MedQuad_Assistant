@@ -1,4 +1,5 @@
 import os
+import re
 import torch
 import gradio as gr
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
@@ -16,14 +17,20 @@ ADAPTER_ID = "Lucifer049/medquad_assistant_v1"
 
 SYSTEM_PROMPT = (
     "You are a helpful and accurate medical assistant. "
-    "Provide clear, informative responses to medical questions. "
-    "Always remind users to consult healthcare professionals for proper diagnosis and treatment."
+    "Answer in a clear, structured format. "
+    "For every response: start with 1 brief context sentence, then add 'Key points:' followed by 4-7 bullet points. "
+    "If the topic can involve danger signs, add 'See a doctor urgently if:' with bullet points. "
+    "Keep statements medically grounded, practical, and non-alarmist. "
+    "Avoid repetition and vague filler text. "
+    "End with a brief reminder that this is educational information and not a diagnosis."
 )
 
 # Generation parameters
-MAX_NEW_TOKENS = 256
-TEMPERATURE = 0.7
-TOP_P = 0.9
+MAX_NEW_TOKENS = 320
+TEMPERATURE = 0.25
+TOP_P = 0.85
+REPETITION_PENALTY = 1.1
+NO_REPEAT_NGRAM_SIZE = 4
 
 # Model Loading
 _tokenizer = None
@@ -93,6 +100,37 @@ def _load_model():
     return _tokenizer, _model
 
 
+def _ensure_bulleted_response(text: str) -> str:
+    """Normalize model output into point-wise format when needed."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return cleaned
+
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    has_points = any(
+        line.startswith("- ")
+        or line.startswith("* ")
+        or bool(re.match(r"^\d+\.\s", line))
+        for line in lines
+    )
+    if has_points:
+        return cleaned
+
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", cleaned) if s.strip()]
+    if not sentences:
+        return cleaned
+
+    if len(sentences) == 1:
+        return f"Key points:\n- {sentences[0]}"
+
+    intro = sentences[0]
+    points = sentences[1:]
+
+    formatted = [intro, "", "Key points:"]
+    formatted.extend([f"- {point}" for point in points])
+    return "\n".join(formatted)
+
+
 # Inference
 def respond(message: str, history: list) -> str:
     """
@@ -138,12 +176,16 @@ def respond(message: str, history: list) -> str:
                 temperature=TEMPERATURE,
                 top_p=TOP_P,
                 do_sample=True,
+                repetition_penalty=REPETITION_PENALTY,
+                no_repeat_ngram_size=NO_REPEAT_NGRAM_SIZE,
+                eos_token_id=tokenizer.eos_token_id,
                 pad_token_id=tokenizer.eos_token_id,
             )
 
         # Extract only the generated tokens (not the prompt)
         generated_tokens = outputs[0][inputs["input_ids"].shape[-1]:]
         response = tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
+        response = _ensure_bulleted_response(response)
         
         return response
 
@@ -204,3 +246,4 @@ if __name__ == "__main__":
     print("=" * 60)
 
     demo.launch(share=True)
+    

@@ -1,4 +1,4 @@
-# 🏥 Medical Q&A Chatbot
+# Medical Q&A Chatbot
 
 A conversational AI assistant for medical questions, powered by a fine-tuned **Llama 3.2-3B** model.
 
